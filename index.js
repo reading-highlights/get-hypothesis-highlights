@@ -170,14 +170,13 @@ function hypothesisPostAuthorName(j) {
 }
 
 // FOR TESTING LOCALLY
-var context = {
-  fail: function(msg) {
-    console.log('Error:');
-    console.log(msg);
-  },
-  succeed: function(msg) {
-    console.log(msg);
-  }
-};
-
-exports.handler(null, context);
+// var context = {
+//   fail: function(msg) {
+//     console.log('Error:');
+//     console.log(msg);
+//   },
+//   succeed: function() {
+//   }
+// };
+//
+// exports.handler(null, context);
