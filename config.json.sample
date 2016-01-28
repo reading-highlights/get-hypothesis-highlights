@@ -1,0 +1,9 @@
+{
+  "user": "abcdef123456",
+  "token": "abcdef123456abcdef123456abcdef123456abcdef123456abcdef123456abcde",
+  "limit": 100,
+  "snsArn": "",
+  "accessKeyId": "",
+  "secretAccessKey": "",
+  "region": "us-east-1"
+}

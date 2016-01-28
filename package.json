@@ -1,0 +1,27 @@
+{
+  "name": "get-hypothesis-highlights",
+  "version": "1.0.0",
+  "description": "Get my hypothes.is highlights in a structured format and publish to AWS SNS.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "zip -r lambda-code.zip index.js config.json node_modules; echo \"*** Now upload lambda-code.zip to AWS Lambda\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "asdf"
+  },
+  "keywords": [
+    "hypothes.is",
+    "highlights",
+    "aws",
+    "sns"
+  ],
+  "author": "Chris Castle",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.2.32",
+    "bluebird": "^3.1.5",
+    "restler": "^3.4.0"
+  }
+}
