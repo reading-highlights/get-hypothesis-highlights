@@ -1,6 +1,8 @@
 {
-  "user": "abcdef123456",
-  "token": "abcdef123456abcdef123456abcdef123456abcdef123456abcdef123456abcde",
+  "appUrl": "https://hypothes.is/app",
+  "apiUrl": "https://hypothes.is/api",
+  "username": "abcdef123456",
+  "password": "",
   "limit": 100,
   "snsArn": "",
   "accessKeyId": "",
