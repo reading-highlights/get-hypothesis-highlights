@@ -8,58 +8,117 @@ var Promise = require('bluebird');
 var rest = require('restler');
 var AWS = require('aws-sdk');
 AWS.config.loadFromPath('./config.json');
-// var sns = new AWS.SNS();
-// var publishQuoteToSns = Promise.promisify(sns.publish, {context: sns});
+var sns = new AWS.SNS();
+var publishQuoteToSns = Promise.promisify(sns.publish, {context: sns});
 
 // Get Hypothes.is highlights
 exports.handler = function(event, context) {
-  console.log('Received event:', JSON.stringify(event, null, 2));
 
-  // curl -H "X-Annotator-Auth-Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDAiLCJpYXQiOjE0NTM5NjA0OTEsImF1ZCI6Imh0dHBzOi8vaHlwb3RoZXMuaXMiLCJleHAiOjE0NTM5NjQwOTEsInN1YiI6ImFjY3Q6Y3JjQGh5cG90aGVzLmlzIn0.PTXC2fXJP4sBX-kTCyT9Jj7nnnOFWlClsaOgrn8MFKI" \
-  //      -H "x-csrf-token: 7aa99adb16a336574f0795879d12c08e93d2a46e" \
-  //      "https://hypothes.is/api/search/?user=crc@hypothes.is"
+  // make GET request to app url and get cookies
+  rest.get(config.appUrl).on('success', function(result, response) {
+    var initialCookies = getCookiesFrom(response);
+    var auth = { username: config.username, password: config.password };
+    var xsrfToken = xsrfTokenFromCookies(initialCookies);
 
-  var url = 'https://hypothes.is/api/search/?user=' + config.user + '&limit=' + config.limit;
-  rest.get(url, {
-    headers: {
-      'X-Annotator-Auth-Token': config.token,
-      'x-csrf-token': config.csrf_token
+    // make POST request to login url with cookies and username password in body
+    rest.postJson(config.appUrl + '?__formid__=login', auth, {
+      headers: { cookie: initialCookies.join('; '),
+                 'x-csrf-token': xsrfToken
+               }
+    }).on('success', function(result, response) {
+
+      // make GET request to token url with cookies and assertion parameter to get auth token
+      rest.get(config.apiUrl + '/token?assertion=' + xsrfToken, {
+        headers: { cookie: initialCookies.join('; '),
+                   'x-csrf-token': xsrfToken
+                 }
+      }).on('success', function(result, response) {
+
+        // make GET request to API url to get highlights JSON
+        var authToken = result;
+        var url = config.apiUrl + '/search/?user=' + config.username + '@hypothes.is&limit=' + config.limit;
+        rest.get(url, {
+          headers: { 'X-Annotator-Auth-Token': authToken }
+        }).on('success', function(result, response) {
+
+          // send highlights to SNS
+          var quoteCount = 0;
+          Promise.each(result.rows, function(h) {
+            quoteCount++;
+            return sendHighlightToSns(h);
+          }).then(function() {
+            console.log('' + quoteCount + ' quote(s) published to SNS from hypothes.is');
+            context.succeed();
+          }).catch(function(error) {
+            context.fail(error);
+          });
+        }).on('fail',  handleError)
+          .on('error', handleError); // error getting highlights JSON
+      }).on('fail',  handleError)
+        .on('error', handleError);   // error getting auth token
+    }).on('fail',  handleError)
+      .on('error', handleError);     // error logging in
+  }).on('fail',  handleError)
+    .on('error', handleError);       // error in base URL request
+}
+
+// Handle HTTP or restler errors
+function handleError(result, response) {
+  if (result instanceof Error) {
+    context.fail('Error: ' + result.message);
+  } else {
+    context.fail(response.statusCode + ' ' + response.statusMessage + ': ' + JSON.stringify(result));
+  }
+}
+
+// Format quote object and send to SNS
+function sendHighlightToSns(q) {
+  // construct quote object
+  var quote = {
+    text: hypothesisText(q),
+    link: null,
+    createdAt: Date.parse(q.created),
+    post: {
+      title: hypothesisPostTitle(q),
+      link: hypothesisPostLink(q),
+      author: {
+        name: hypothesisPostAuthorName(q),
+        link: null
+      },
+      siteLink: null
     }
-  }).on('success', function(data) {
+  };
 
-    var quoteCount = 0;
-    Promise.each(data.rows, function(q) {
-      // construct quote object
-      var quote = {
-        text: hypothesisText(q),
-        link: null,
-        createdAt: Date.parse(q.created),
-        post: {
-          title: hypothesisPostTitle(q),
-          link: q.target[0].source,
-          author: {
-            name: hypothesisPostAuthorName(q),
-            link: null
-          },
-          siteLink: null
-        }
-      };
+  return publishQuoteToSns({Message: JSON.stringify(quote), TopicArn: config.snsArn});
+}
 
-      quoteCount++;
-      // return publishQuoteToSns({Message: JSON.stringify(quote), TopicArn: config.snsArn});
-      console.log(JSON.stringify(quote, null, 2));
-
-    }).then(function() {
-      console.log('' + quoteCount + ' quote(s) published to SNS from hypothes.is');
-      process.exit();
-      context.succeed();
-    }).catch(function(error) {
-      console.log(error);
-      context.fail();
-    });
+// Returns xsrf token from cookie array
+function xsrfTokenFromCookies(cookies) {
+  var xsrfCookies = cookies.filter(function(el) {
+    return el.match(/^XSRF-TOKEN=/);
   });
-};
 
+  var xsrfCookie = xsrfCookies[0];
+  return xsrfCookie.split('=')[1];
+}
+
+// returns array of cookies from restler http response object
+// e.g.
+// [
+//  '__cfduid=d0124397b23e0f5d660034a0f7a19e6a31454007106',
+//  'session=776e29c48f17523b3e476b50984e3cc32a36e8fg'
+// ]
+function getCookiesFrom(httpResponse) {
+  var cookies = [];
+  if (httpResponse && httpResponse.headers && httpResponse.headers['set-cookie']) {
+    for (var i = 0; i < httpResponse.headers['set-cookie'].length; i++) {
+      cookies.push(httpResponse.headers['set-cookie'][i].split('; ')[0]);
+    }
+  }
+  return cookies;
+}
+
+// Parse the highlight JSON returning the highlighted text, if available
 function hypothesisText(j) {
   if (j.target && j.target[0] && j.target[0].selector) {
     var selector = j.target[0].selector;
@@ -72,6 +131,7 @@ function hypothesisText(j) {
   return null;
 }
 
+// Parse the highlight JSON returning the post's title, if available
 function hypothesisPostTitle(j) {
   if (j) {
     if (j.document) {
@@ -85,6 +145,17 @@ function hypothesisPostTitle(j) {
   return null;
 }
 
+// Parse the highlight JSON returning the post's link, if available
+function hypothesisPostLink(j) {
+  if (j) {
+    if (j.target && j.target[0] && j.target[0].source) {
+      return j.target[0].source;
+    }
+  }
+  return null;
+}
+
+// Parse the highlight JSON returning the post's author name, if available
 function hypothesisPostAuthorName(j) {
   if (j) {
     if (j.document) {
