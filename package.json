@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "asdf"
+    "url": "git@github.com:reading-highlights/get-hypothesis-highlights.git"
   },
   "keywords": [
     "hypothes.is",
