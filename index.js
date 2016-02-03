@@ -37,9 +37,15 @@ exports.handler = function(event, context) {
         // make GET request to API url to get highlights JSON
         var authToken = result;
         var url = config.apiUrl + '/search/?user=' + config.username + '@hypothes.is&limit=' + config.limit;
+        console.log('API request URL: ' + url);
         rest.get(url, {
           headers: { 'X-Annotator-Auth-Token': authToken }
         }).on('success', function(result, response) {
+          if (result.total) {
+            console.log('Received ' + result.total + ' records from hypothes.is API response');
+          } else {
+            console.log('Missing or malformatted "total" value in hypothes.is API response');
+          }
 
           // send highlights to SNS
           var quoteCount = 0;
@@ -60,7 +66,7 @@ exports.handler = function(event, context) {
       .on('error', handleError);     // error logging in
   }).on('fail',  handleError)
     .on('error', handleError);       // error in base URL request
-}
+};
 
 // Handle HTTP or restler errors
 function handleError(result, response) {
