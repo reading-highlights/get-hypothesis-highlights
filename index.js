@@ -84,6 +84,7 @@ function sendHighlightToSns(q) {
     text: hypothesisText(q),
     link: null,
     createdAt: Date.parse(q.created),
+    annotation: hypothesisAnnotationText(q),
     post: {
       title: hypothesisPostTitle(q),
       link: hypothesisPostLink(q),
@@ -122,6 +123,14 @@ function getCookiesFrom(httpResponse) {
     }
   }
   return cookies;
+}
+
+// Parse the highlight JSON returning the user-supplied annotation text, if available
+function hypothesisAnnotationText(j) {
+  if (j && j.text) {
+    return j.text;
+  }
+  return null;
 }
 
 // Parse the highlight JSON returning the highlighted text, if available
