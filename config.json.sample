@@ -1,8 +1,7 @@
 {
-  "appUrl": "https://hypothes.is/app",
-  "apiUrl": "https://hypothes.is/api",
   "username": "abcdef123456",
-  "password": "",
+  "apiUrl": "https://hypothes.is/api",
+  "apiToken": "6879-2499568589688ebc88df9d888beef",
   "limit": 100,
   "snsArn": "",
   "accessKeyId": "",

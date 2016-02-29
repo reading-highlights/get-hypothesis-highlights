@@ -10,70 +10,44 @@ var AWS = require('aws-sdk');
 AWS.config.loadFromPath('./config.json');
 var sns = new AWS.SNS();
 var publishQuoteToSns = Promise.promisify(sns.publish, {context: sns});
+var ctx = null;
 
 // Get Hypothes.is highlights
 exports.handler = function(event, context) {
+  ctx = context;
 
-  // make GET request to app url and get cookies
-  rest.get(config.appUrl).on('success', function(result, response) {
-    var initialCookies = getCookiesFrom(response);
-    var auth = { username: config.username, password: config.password };
-    var xsrfToken = xsrfTokenFromCookies(initialCookies);
+  var url = config.apiUrl + '/search?user=' + config.username + '@hypothes.is&limit=' + config.limit;
+  console.log('API request URL: ' + url);
+  rest.get(url, { headers: { 'Authorization': 'Bearer ' + config.apiToken } })
+  .on('success', function(result, response) {
+    if (result.total) {
+      console.log('Received ' + result.total + ' records from hypothes.is API response');
+    } else {
+      console.log('Missing or malformatted "total" value in hypothes.is API response');
+    }
 
-    // make POST request to login url with cookies and username password in body
-    rest.postJson(config.appUrl + '?__formid__=login', auth, {
-      headers: { cookie: initialCookies.join('; '),
-                 'x-csrf-token': xsrfToken
-               }
-    }).on('success', function(result, response) {
-
-      // make GET request to token url with cookies and assertion parameter to get auth token
-      rest.get(config.apiUrl + '/token?assertion=' + xsrfToken, {
-        headers: { cookie: initialCookies.join('; '),
-                   'x-csrf-token': xsrfToken
-                 }
-      }).on('success', function(result, response) {
-
-        // make GET request to API url to get highlights JSON
-        var authToken = result;
-        var url = config.apiUrl + '/search/?user=' + config.username + '@hypothes.is&limit=' + config.limit;
-        console.log('API request URL: ' + url);
-        rest.get(url, {
-          headers: { 'X-Annotator-Auth-Token': authToken }
-        }).on('success', function(result, response) {
-          if (result.total) {
-            console.log('Received ' + result.total + ' records from hypothes.is API response');
-          } else {
-            console.log('Missing or malformatted "total" value in hypothes.is API response');
-          }
-
-          // send highlights to SNS
-          var quoteCount = 0;
-          Promise.each(result.rows, function(h) {
-            quoteCount++;
-            return sendHighlightToSns(h);
-          }).then(function() {
-            console.log('' + quoteCount + ' quote(s) published to SNS from hypothes.is');
-            context.succeed();
-          }).catch(function(error) {
-            context.fail(error);
-          });
-        }).on('fail',  handleError)
-          .on('error', handleError); // error getting highlights JSON
-      }).on('fail',  handleError)
-        .on('error', handleError);   // error getting auth token
-    }).on('fail',  handleError)
-      .on('error', handleError);     // error logging in
-  }).on('fail',  handleError)
-    .on('error', handleError);       // error in base URL request
+    // send highlights to SNS
+    var quoteCount = 0;
+    Promise.each(result.rows, function(h) {
+      quoteCount++;
+      return sendHighlightToSns(h);
+    }).then(function() {
+      console.log('' + quoteCount + ' quote(s) published to SNS from hypothes.is');
+      context.succeed();
+    }).catch(function(error) {
+      context.fail(error);
+    });
+  })
+  .on('fail',  handleError)
+  .on('error', handleError); // error getting highlights JSON
 };
 
 // Handle HTTP or restler errors
 function handleError(result, response) {
   if (result instanceof Error) {
-    context.fail('Error: ' + result.message);
+    ctx.fail('Error: ' + result.message);
   } else {
-    context.fail(response.statusCode + ' ' + response.statusMessage + ': ' + JSON.stringify(result));
+    ctx.fail(response.statusCode + ' ' + response.statusMessage + ': ' + JSON.stringify(result));
   }
 }
 
@@ -97,32 +71,6 @@ function sendHighlightToSns(q) {
   };
 
   return publishQuoteToSns({Message: JSON.stringify(quote), TopicArn: config.snsArn});
-}
-
-// Returns xsrf token from cookie array
-function xsrfTokenFromCookies(cookies) {
-  var xsrfCookies = cookies.filter(function(el) {
-    return el.match(/^XSRF-TOKEN=/);
-  });
-
-  var xsrfCookie = xsrfCookies[0];
-  return xsrfCookie.split('=')[1];
-}
-
-// returns array of cookies from restler http response object
-// e.g.
-// [
-//  '__cfduid=d0124397b23e0f5d660034a0f7a19e6a31454007106',
-//  'session=776e29c48f17523b3e476b50984e3cc32a36e8fg'
-// ]
-function getCookiesFrom(httpResponse) {
-  var cookies = [];
-  if (httpResponse && httpResponse.headers && httpResponse.headers['set-cookie']) {
-    for (var i = 0; i < httpResponse.headers['set-cookie'].length; i++) {
-      cookies.push(httpResponse.headers['set-cookie'][i].split('; ')[0]);
-    }
-  }
-  return cookies;
 }
 
 // Parse the highlight JSON returning the user-supplied annotation text, if available
